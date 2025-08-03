@@ -1,0 +1,35 @@
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/hagepta-volunteer-hours-app:$COMMIT_SHA', '.']
+
+  # Step 2: Push the Docker image to Artifact Registry (or Container Registry)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/hagepta-volunteer-hours-app:$COMMIT_SHA']
+
+  # Step 3: Deploy the image to Cloud Run, attaching secrets as environment variables
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'hagepta-volunteer-hours-app' # Replace with your Cloud Run service name
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/hagepta-volunteer-hours-app:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1' # Replace with your desired region
+      - '--allow-unauthenticated' # Or --no-allow-unauthenticated if you need authentication
+      # THIS IS THE CRUCIAL PART FOR SECRETS:
+      - '--set-secrets'
+      - 'GOOGLE_APPLICATION_CREDENTIALS_JSON=projects/$PROJECT_NUMBER/secrets/streamlit-service-account-key:latest'
+      # If you prefer GOOGLE_CREDS, use this instead:
+      # - 'GOOGLE_CREDS=projects/$PROJECT_NUMBER/secrets/my-streamlit-google-creds:latest'
+    # Optional: If your Cloud Build service account needs specific permissions to access secrets *during the build process*
+    # (e.g., if you were to access secrets inside the Dockerfile, which you are not doing here),
+    # you might need to specify availableSecrets. But for deploying to Cloud Run,
+    # the --set-secrets flag handles the runtime injection.
+
+# Permissions for the Cloud Build Service Account:
+# The Cloud Build service account (usually PROJECT_NUMBER@cloudbuild.gserviceaccount.com)
+# needs the 'Secret Manager Secret Accessor' role on your 'my-streamlit-google-creds' secret.
+# This allows Cloud Build to instruct Cloud Run to access the secret on its behalf during deployment.
