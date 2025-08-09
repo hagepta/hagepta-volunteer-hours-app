@@ -59,7 +59,7 @@ sheet = get_gsheet()
 
 
 # ---------- Streamlit UI ----------
-st.title("🤝 PTA Volunteer Hours Submission Form")
+st.title("🤝 Hage PTA Volunteer Hours Submission Form 2025-26")
 
 st.markdown("""
             Please fill out this form to submit your volunteer hours for the PTA.
