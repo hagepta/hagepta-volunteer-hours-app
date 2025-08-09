@@ -4,25 +4,15 @@ import json
 import os
 from datetime import date, datetime # Ensure datetime is imported for current time
 from oauth2client.service_account import ServiceAccountCredentials
+from google.cloud import storage
 import time
 
-# A note on the Google Sheets setup:
-# The original code used "PTA_Reimbursements_2025-26" as the spreadsheet name
-# and "reimbursements" as the worksheet name.
-# You will need to create a new Google Sheet for volunteer hours and
-# update the sheet_name and worksheet_name variables below.
-# Make sure your service account has access to this new sheet.
+
+
 
 # ---------- Google Sheets Setup ----------
-import streamlit as st
-import os
-import json
-import gspread
-from google.oauth2.service_account import Credentials as ServiceAccountCredentials # Renamed to avoid conflict
-
 @st.cache_resource
 def get_gsheet():
-    """Initializes and returns a gspread worksheet object."""
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
@@ -30,55 +20,37 @@ def get_gsheet():
 
     creds_dict = None
 
-    # --- PRIORITY 1: Check for GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable (for Cloud Run) ---
     if "GOOGLE_APPLICATION_CREDENTIALS_JSON" in os.environ:
         try:
             creds_json_string = os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
             creds_dict = json.loads(creds_json_string)
-            st.success("Credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable.")
-            # IMPORTANT: Return creds_dict immediately if successful to prevent falling to st.secrets check
-            # No, we can't return creds_dict directly here, as we need to authorize gspread below.
-            # But the logic flow for setting creds_dict is correct.
+            #st.success("Credentials loaded from GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable.")
         except json.JSONDecodeError:
             st.error("Error decoding GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable. Please check your secret format.")
-            st.stop() # Stop if there's a problem with the environment variable
         except Exception as e:
             st.error(f"Unexpected error loading env var credentials: {e}")
-            st.stop() # Stop if there's an unexpected error
-    # --- PRIORITY 2: Check for GOOGLE_CREDS in st.secrets (for local/Streamlit Cloud, only if env var not found) ---
-    elif "GOOGLE_CREDS" in st.secrets: # Using elif ensures this only runs if the first if was False
+    elif "GOOGLE_CREDS" in st.secrets:
         try:
-            # Assuming GOOGLE_CREDS in secrets.toml is a JSON string
-            creds_json_string = st.secrets["GOOGLE_CREDS"]
-            creds_dict = json.loads(creds_json_string)
+            creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
             st.success("Credentials loaded from st.secrets['GOOGLE_CREDS'].")
         except json.JSONDecodeError:
             st.error("Error decoding st.secrets['GOOGLE_CREDS']. Please check your secrets.toml format.")
-            st.stop() # Stop if there's a problem with st.secrets
         except Exception as e:
             st.error(f"Unexpected error loading st.secrets credentials: {e}")
-            st.stop() # Stop if there's an unexpected error
-    # --- If no credentials found in either location ---
     else:
         st.error("No Google credentials found. Please set GOOGLE_APPLICATION_CREDENTIALS_JSON environment variable (for Cloud Run) or st.secrets['GOOGLE_CREDS'] (for local/Streamlit Cloud).")
-        st.stop() # Stop the app if no credentials could be loaded
+        st.stop()
 
-    # --- Authorization and Sheet Opening (Only proceeds if creds_dict was successfully populated) ---
-    if creds_dict: # This check is crucial now
+    if creds_dict:
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             client = gspread.authorize(creds)
-            # You must change the spreadsheet and worksheet names here to match your volunteer hours sheet
-            sheet_name = "PTA_Volunteer_Hours_2025-26"
-            worksheet_name = "hours"
-            return client.open(sheet_name).worksheet(worksheet_name)
+            return client.open("PTA_Volunteer_Hours_2025-26").worksheet("hours")
         except Exception as e:
             st.error(f"Error authorizing gspread with provided credentials: {e}. Ensure your service account has access to the Google Sheet.")
             st.stop()
     else:
-        # This else block should theoretically not be reached if st.stop() is used above correctly
-        # but it's good for defensive programming.
-        st.error("Internal error: Credentials dictionary is unexpectedly empty. Cannot authorize gspread.")
+        st.error("Credentials dictionary is empty. Cannot authorize gspread.")
         st.stop()
 
 # Initialize the Google Sheet connection
@@ -106,6 +78,7 @@ with st.form("volunteer_hours_form", clear_on_submit=True):
         hours = st.number_input("Hours Volunteered", min_value=0.0, step=0.5, format="%.2f")
 
     event = st.text_input("Event")
+    duties = st.text_area("Duties Performed", placeholder="Describe the duties you performed during your volunteer hours.")
 
     submitted = st.form_submit_button("Submit Hours")
 
@@ -123,6 +96,7 @@ if submitted:
                 last_name.strip(),
                 f"{hours:.2f}",
                 event.strip(),
+                duties.strip(),
             ])
             st.success("✅ Volunteer hours submitted successfully. Thank you!")
             time.sleep(3)  # Optional: Pause to allow user to read success message
